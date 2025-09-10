@@ -31,6 +31,8 @@ export default function MozartChat() {
 
       if (data.bedrockReply) {
         setMessages((prev) => [...prev, { role: "assistant", text: data.bedrockReply }]);
+        // 🔊 Reproducir respuesta de voz si llega desde Bedrock en modo voz
+        speak(data.bedrockReply);
       }
     };
 
@@ -81,26 +83,64 @@ export default function MozartChat() {
     setPartial("");
   };
 
+  // === FUNCIÓN PARA HABLAR (TTS) ===
+  const speak = async (text) => {
+    if (!text || !text.trim()) return;
+
+    try {
+      const res = await fetch("http://localhost:4000/speak", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+
+      if (!res.ok) {
+        console.error("❌ Error al generar voz:", await res.text());
+        return;
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.play();
+    } catch (err) {
+      console.error("❌ Error TTS en frontend:", err);
+    }
+  };
+
   // === MODO TEXTO ===
   const sendPrompt = async () => {
     if (!prompt.trim()) return;
 
     const userMsg = { role: "user", text: prompt };
     setMessages((prev) => [...prev, userMsg]);
+    const userInput = prompt;
     setPrompt("");
 
     try {
       const res = await fetch("http://localhost:4000/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify({ prompt: userInput }),
       });
 
       const data = await res.json();
-      setMessages((prev) => [...prev, { role: "assistant", text: data.reply }]);
+
+      // Manejo seguro: si no hay reply, usamos un mensaje de error
+      const reply = data.reply || "❌ Lo siento, no hubo respuesta del servidor.";
+
+      setMessages((prev) => [...prev, { role: "assistant", text: reply }]);
+
+      // 🔊 Hablar la respuesta solo si existe
+      if (reply && !reply.startsWith("❌")) {
+        speak(reply);
+      }
     } catch (err) {
       console.error(err);
-      setMessages((prev) => [...prev, { role: "assistant", text: "❌ Error al conectar con el servidor" }]);
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", text: "❌ Error al conectar con el servidor" },
+      ]);
     }
   };
 
@@ -184,3 +224,5 @@ export default function MozartChat() {
     </div>
   );
 }
+
+
