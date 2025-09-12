@@ -4,25 +4,95 @@ export default function MozartChat() {
   const [mode, setMode] = useState("voice"); // "voice" | "text"
   const [messages, setMessages] = useState([]);
   const [partial, setPartial] = useState("");
-  const [prompt, setPrompt] = useState(""); // para modo texto
+  const [prompt, setPrompt] = useState("");
+
   const wsRef = useRef(null);
   const mediaRef = useRef({ stream: null, processor: null, audioContext: null });
+
+  // 🔐 Identificador estable por pestaña/llamada para barge-in en el backend
+  const clientIdRef = useRef(
+    (window.crypto?.randomUUID && window.crypto.randomUUID()) ||
+      `client-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  );
+
+  // 🎧 Un solo reproductor para evitar superposición de audios
+  const audioRef = useRef(null);
+
+  const API = "http://localhost:4000";
+
+  // 🛑 Corta audio local y avisa al backend (barge-in)
+  const stopSpeak = async () => {
+    try {
+      if (!audioRef.current) audioRef.current = new Audio();
+      const a = audioRef.current;
+      // corta de inmediato en el cliente
+      try { a.pause(); } catch {}
+      try { a.src = ""; } catch {}
+      // avisa al backend que aborte el stream actual
+      fetch(`${API}/speak/stop?clientId=${clientIdRef.current}`, { method: "POST" }).catch(() => {});
+    } catch {}
+  };
+
+  // 🔊 TTS con barge-in: corta lo anterior y reproduce lo nuevo
+  const speak = async (text) => {
+    if (!text || !text.trim()) return;
+
+    // corta cualquier reproducción actual y aborta en backend
+    stopSpeak();
+
+    try {
+      if (!audioRef.current) audioRef.current = new Audio();
+      const res = await fetch(`${API}/speak?clientId=${clientIdRef.current}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+
+      if (!res.ok) {
+        console.error("❌ Error al generar voz:", await res.text());
+        return;
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = audioRef.current;
+
+      // libera el URL anterior si existía
+      try {
+        if (a.src && a.src.startsWith("blob:")) URL.revokeObjectURL(a.src);
+      } catch {}
+
+      a.src = url;
+      a.onended = () => {
+        try { URL.revokeObjectURL(url); } catch {}
+      };
+
+      await a.play();
+    } catch (err) {
+      console.error("❌ Error TTS en frontend:", err);
+    }
+  };
 
   // === INICIO GRABACIÓN VOZ ===
   const startRecording = async () => {
     if (wsRef.current) return;
+
+    // Si hay voz sonando, la cortamos (barge-in al empezar a hablar)
+    stopSpeak();
 
     const ws = new WebSocket("ws://localhost:4000");
     wsRef.current = ws;
 
     ws.onopen = () => console.log("✅ Conectado al servidor");
 
-    ws.onmessage = (event) => {
+    ws.onmessage = async (event) => {
       const data = JSON.parse(event.data);
 
       if (data.transcript) {
         if (data.isPartial) {
           setPartial(data.transcript);
+          // (Opcional) si quieres barge-in inmediato al detectar voz del usuario:
+          // stopSpeak();
         } else {
           setMessages((prev) => [...prev, { role: "user", text: data.transcript }]);
           setPartial("");
@@ -31,8 +101,8 @@ export default function MozartChat() {
 
       if (data.bedrockReply) {
         setMessages((prev) => [...prev, { role: "assistant", text: data.bedrockReply }]);
-        // 🔊 Reproducir respuesta de voz si llega desde Bedrock en modo voz
-        speak(data.bedrockReply);
+        // Barge-in: corta audio previo y habla la nueva respuesta
+        await speak(data.bedrockReply);
       }
     };
 
@@ -41,9 +111,9 @@ export default function MozartChat() {
       wsRef.current = null;
     };
 
-    // Captura de audio en PCM
+    // Captura de audio en PCM 16-bit 44.1kHz
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const audioContext = new AudioContext({ sampleRate: 44100 });
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 44100 });
     const source = audioContext.createMediaStreamSource(stream);
     const processor = audioContext.createScriptProcessor(4096, 1, 1);
 
@@ -83,31 +153,6 @@ export default function MozartChat() {
     setPartial("");
   };
 
-  // === FUNCIÓN PARA HABLAR (TTS) ===
-  const speak = async (text) => {
-    if (!text || !text.trim()) return;
-
-    try {
-      const res = await fetch("http://localhost:4000/speak", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
-      });
-
-      if (!res.ok) {
-        console.error("❌ Error al generar voz:", await res.text());
-        return;
-      }
-
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audio.play();
-    } catch (err) {
-      console.error("❌ Error TTS en frontend:", err);
-    }
-  };
-
   // === MODO TEXTO ===
   const sendPrompt = async () => {
     if (!prompt.trim()) return;
@@ -118,22 +163,19 @@ export default function MozartChat() {
     setPrompt("");
 
     try {
-      const res = await fetch("http://localhost:4000/chat", {
+      const res = await fetch(`${API}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: userInput }),
       });
 
       const data = await res.json();
-
-      // Manejo seguro: si no hay reply, usamos un mensaje de error
       const reply = data.reply || "❌ Lo siento, no hubo respuesta del servidor.";
 
       setMessages((prev) => [...prev, { role: "assistant", text: reply }]);
 
-      // 🔊 Hablar la respuesta solo si existe
       if (reply && !reply.startsWith("❌")) {
-        speak(reply);
+        await speak(reply); // barge-in integrado
       }
     } catch (err) {
       console.error(err);
@@ -189,7 +231,7 @@ export default function MozartChat() {
       {/* Controles */}
       <div className="p-3 border-t bg-gray-50">
         {mode === "voice" ? (
-          <div className="flex space-x-2">
+          <div className="flex gap-2">
             <button
               onClick={startRecording}
               className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
@@ -202,9 +244,16 @@ export default function MozartChat() {
             >
               🛑 Detener
             </button>
+            <button
+              onClick={stopSpeak}
+              className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800"
+              title="Corta cualquier audio en curso"
+            >
+              🔇 Silenciar voz
+            </button>
           </div>
         ) : (
-          <div className="flex space-x-2">
+          <div className="flex gap-2">
             <input
               type="text"
               value={prompt}
@@ -218,11 +267,19 @@ export default function MozartChat() {
             >
               ➤
             </button>
+            <button
+              onClick={stopSpeak}
+              className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800"
+              title="Corta cualquier audio en curso"
+            >
+              🔇
+            </button>
           </div>
         )}
       </div>
     </div>
   );
 }
+
 
 
