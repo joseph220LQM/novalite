@@ -1,29 +1,43 @@
 {
-  "name": "novalite",
-  "private": true,
-  "version": "0.0.0",
-  "type": "module",
+  "name": "mozartai-agenda-widget",
+  "version": "0.1.0",
+  "private": false,
+  "description": "Widget de agenda (Mozart) embebible vía unpkg (UMD/ES) con barge-in y TTS",
+  "license": "MIT",
+  "files": ["dist"],
+  "main": "dist/agenda-widget.umd.js",
+  "module": "dist/agenda-widget.es.js",
+  "unpkg": "dist/agenda-widget.umd.js",
+  "jsdelivr": "dist/agenda-widget.umd.js",
+  "style": "dist/widget.css",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "lint": "eslint .",
     "preview": "vite preview"
   },
-  "dependencies": {
-    "@tailwindcss/vite": "^4.1.12",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1",
-    "tailwindcss": "^4.1.12"
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
   },
   "devDependencies": {
-    "@eslint/js": "^9.33.0",
-    "@types/react": "^19.1.10",
-    "@types/react-dom": "^19.1.7",
     "@vitejs/plugin-react": "^5.0.0",
+    "vite": "^7.1.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwindcss": "^4.1.12",
+    "@eslint/js": "^9.33.0",
     "eslint": "^9.33.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^16.3.0",
-    "vite": "^7.1.2"
+    "@types/react": "^19.1.10",
+    "@types/react-dom": "^19.1.7"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
+
+
+
+

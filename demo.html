@@ -1,0 +1,29 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Demo — Mozart Agenda Widget</title>
+
+    <!-- React & ReactDOM UMD (porque los externalizaste en Vite) -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script>window.process ||= { env: { NODE_ENV: "production" } };</script>
+
+    <link rel="stylesheet" href="./dist/widget.css" />
+    <style>body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial}</style>
+  </head>
+  <body>
+    <!-- Tu bundle UMD: asegúrate que este archivo EXISTE en ./dist/ -->
+    <script src="./dist/agenda-widget.umd.js"></script>
+    <script>
+      console.log("Widget:", !!window.MozartAgendaWidget);
+      MozartAgendaWidget.mount(document.body, {
+        apiBase: "http://localhost:4000",
+        mode: "both",
+        position: "bottom-right"
+      });
+    </script>
+  </body>
+</html>
+
